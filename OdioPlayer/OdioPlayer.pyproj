@@ -25,9 +25,11 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="lipopi\player.py" />
     <Compile Include="lipopi\shutdown.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="lipopi\sound.py" />
     <Compile Include="lipopi\__init__.py">
       <SubType>Code</SubType>
     </Compile>
