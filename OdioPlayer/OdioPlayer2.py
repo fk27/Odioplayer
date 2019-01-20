@@ -1,5 +1,7 @@
 import os
-import sys, getopt
+#from os import system
+import sys
+import getopt
 import time
 import vlc
 import eyed3
@@ -11,9 +13,10 @@ from lipopi import *
 from Button import Button
 from ButtonType import ButtonType
 
+
 class OdioPlayer(object):
 
-    debug = False
+    debug = True
     quiet = False
 
     btnList = []
@@ -25,18 +28,18 @@ class OdioPlayer(object):
     longPushedDelay = 0
     startPushedTime = 0
     currentPushedTime = 0
-    wasLongPush=False
+    wasLongPush = False
 
-    audioRoot= None
- 
-    safeVolMin=None
-    safeVolMax=None
+    audioRoot = None
+
+    safeVolMin = None
+    safeVolMax = None
     defaultSafeVol = None
 
     outdoorVolMin = None
     outdoorVolMax = None
     defaultOutdoorVol = None
-    
+
     volumeMin = None
     volumeMax = None
     currentVolume = 50
@@ -65,33 +68,42 @@ class OdioPlayer(object):
     isSpeaking = False
     playerWasPlaying = False
 
+    isPlayingSound = False
+    playCurrentTrack = False
+
     savedDataFile = None
     savedData = None
     configFile = None
     config = None
+
     isDebug = False
     isAlbumTitleTTS = False
     isSongTitleTTS = False
 
-    applicationPath=''
-
+    applicationPath = ''
+    soundCard = None
+    soundCardEnabled = True
+    shuttingDown = False
 
     def __init__(self, quiet, debug):
         try:
             self.quiet = quiet
             self.debug = debug
 
+            self.soundCard = PAM8302A(12, True)
+            self.soundCard.enable()
+
             if self.debug:
                 print ("-> OdioPlayer: init")
 
             self.applicationPath = os.path.dirname(os.path.abspath(__file__))
-            
-            self.savedDataFile = open(self.applicationPath+"/savedData.xml","r+")
-            self.savedData = BeautifulSoup(self.savedDataFile,'xml')
 
-            self.configFile = open(self.applicationPath+"/config.xml")
-            self.config = BeautifulSoup(self.configFile,'xml')
-          
+            self.savedDataFile = open(self.applicationPath + "/config/savedData.xml", "r+")
+            self.savedData = BeautifulSoup(self.savedDataFile, 'xml')
+
+            self.configFile = open(self.applicationPath + "/config/config.xml")
+            self.config = BeautifulSoup(self.configFile, 'xml')
+
             # if xml files valid --> init param
             if self.savedData.lastAlbumId and self.config.audioRoot:
 
@@ -101,8 +113,8 @@ class OdioPlayer(object):
                 self.isSongTitleTTS = True if self.config.isSongTitleTTS and self.config.isSongTitleTTS.string == "True" else False
                 self.audioRoot = self.config.audioRoot.string
 
-                self.safeVolMin=int(self.config.volume.safeVolMin.string)
-                self.safeVolMax=int(self.config.volume.safeVolMax.string)
+                self.safeVolMin = int(self.config.volume.safeVolMin.string)
+                self.safeVolMax = int(self.config.volume.safeVolMax.string)
                 self.defaultSafeVol = int(self.config.volume.defaultSafeVol.string)
 
                 self.outdoorVolMin = int(self.config.volume.outdoorVolMin.string)
@@ -113,12 +125,12 @@ class OdioPlayer(object):
 
                 self.volumeMin = self.safeVolMin
                 self.volumeMax = self.safeVolMax
-               
-                if self.savedData.currentVolume.string != None:
+
+                if self.savedData.currentVolume.string is not None:
                     self.currentVolume = int(self.savedData.currentVolume.string)
                 else:
                     self.currentVolume = self.defaultSafeVol
-            
+
                 #Init GPIO and Buttons
                 GPIO.setwarnings(True if self.config.gpio.setWarnings.string == "True" else False)
                 GPIO.setmode(GPIO.BCM)
@@ -131,7 +143,7 @@ class OdioPlayer(object):
                 self.btnList = []
                 for button in self.config.buttons.findAll('button'):
                     self.btnList.append(Button(int(button["gpioOut"]), int(button["gpioIn"]), ButtonType[button["type"]]))
-        
+
                 self.longPushedDelay = int(self.config.buttons.longPushedDelay.string)
 
                 #Init VLC
@@ -140,23 +152,24 @@ class OdioPlayer(object):
                 self.player.audio_set_volume(self.currentVolume)
                 self.vlc_events = self.player.event_manager()
                 self.vlc_events.event_attach(vlc.EventType.MediaPlayerBackward.MediaPlayerEndReached, self.AutoPlayNextTrack)
+                #self.vlc_events.event_detach(vlc.EventType.MediaPlayerBackward.MediaPlayerEndReached)
 
                 #Init Album List
                 self.currentAlbumList = self.GetAlbumList(self.audioRoot)
                 self.moduloAlbumList = len(self.currentAlbumList)
 
                 #If last album exist -> continue to play
-                if self.moduloAlbumList>0:
+                if self.moduloAlbumList > 0:
                     if self.savedData.lastAlbumId.string is not None and self.savedData.lastAlbumTitle.string is not None:
-               
+
                         lastAlbumId = int(self.savedData.lastAlbumId.string)
                         lastAlbumTitle = self.savedData.lastAlbumTitle.string.strip()
 
-                        if lastAlbumId < self.moduloAlbumList and self.currentAlbumList[lastAlbumId]==lastAlbumTitle:
+                        if lastAlbumId < self.moduloAlbumList and self.currentAlbumList[lastAlbumId] == lastAlbumTitle:
                             if self.debug:
-                                print("-> Odioplayer: last listened album found - "+str(lastAlbumId))
+                                print("-> Odioplayer: last listened album found - " + str(lastAlbumId))
                             #self.PlayAlbum(lastAlbumId, int(self.savedData.lastTrackId.string), float(self.savedData.lastTrackPosition.string))
-                            self.PlayAlbum(lastAlbumId, int(0), float(0))
+                            self.PlayAlbum(lastAlbumId)
                     #Else play first album
                     else:
                         self.PlayAlbum(0)
@@ -173,11 +186,11 @@ class OdioPlayer(object):
             print("ValueError:")
             print(ValueError)
             self.CleanUp()
-        except SystemExit:  
+        except SystemExit:
             print("SystemExit:")
             self.CleanUp()
             pass
-    
+
     def CleanUp(self):
         if self.debug:
             print("-> OdioPlayer: CleanUp")
@@ -188,33 +201,37 @@ class OdioPlayer(object):
     def Start(self):
         if self.player:
             try:
-                while True:
-                    if self.player.is_playing():
+                while True and not self.shuttingDown:
+                    if self.player.is_playing() and not self.isPlayingSound:
                         self.SaveCurrentTrackPosition()
-                    i=0
-                    while i< self.lenGPIOList:
+                    i = 0
+                    while i < self.lenGPIOList:
                         tmpBtList = []
-                        tmpBtList = self.CheckButtonGPIO(self.gPioList[(0+i)%self.lenGPIOList],
-                                                     self.gPioList[(1+i)%self.lenGPIOList],
-                                                     self.gPioList[(2+i)%self.lenGPIOList],
-                                                     self.gPioList[(3+i)%self.lenGPIOList])
+                        tmpBtList = self.CheckButtonGPIO(self.gPioList[(0 + i) % self.lenGPIOList],
+                                                     self.gPioList[(1 + i) % self.lenGPIOList],
+                                                     self.gPioList[(2 + i) % self.lenGPIOList],
+                                                     self.gPioList[(3 + i) % self.lenGPIOList])
                         if tmpBtList:
                             self.buttonPushedList.extend(tmpBtList)
-                        i+=1
+                        i += 1
 
-                    if self.playNextTrack == True:
-                        self.PlayNextTrack()
+                    if self.playNextTrack is True:
                         self.playNextTrack = False
+                        self.PlayNextTrack()
+                    elif self.playCurrentTrack is True:
+                        self.playCurrentTrack = False
+                        self.PlayTrack(self.currentTrackId, self.currentTrackPosition)
+
                     #print("check")
                     #Si bouton précédent = bouton -> calcul pushed time
-                    
+
                     #ToCheck
                     #if cmp(self.previousButtonPushedList, self.buttonPushedList) == 0:
                     if(self.previousButtonPushedList > self.buttonPushedList) - (self.previousButtonPushedList < self.buttonPushedList) == 0:
                         self.currentPushedTime = time.time()-self.startPushedTime
                         #Si le delay long pushed est dépassé --> execute action long button pushed
                         if self.currentPushedTime >= self.longPushedDelay:
-                            if  self.buttonPushedList:  
+                            if  self.buttonPushedList:
                                 tmpBtPushedText=Button.GetButtonListName(self.buttonPushedList)
                                 if self.debug:
                                     print("-> OdioPlayer: " + tmpBtPushedText +" long push")
@@ -237,7 +254,7 @@ class OdioPlayer(object):
                     #Si bouton précédent != bouton -> release du bouton OU nouveau bouton poussé
                     else:
                         #Si nouveau bouton -> init pushed time
-                        if  self.buttonPushedList: 
+                        if  self.buttonPushedList:
                             self.currentPushedTime = 0
                             self.startPushedTime = time.time()
                         #Si pas de bouton (release du bouton) => previous button short pushed
@@ -271,9 +288,10 @@ class OdioPlayer(object):
                     or btnList[0].type == ButtonType.M2 \
                     or btnList[0].type == ButtonType.M3 \
                     or btnList[0].type == ButtonType.M4:
-
+                    self.PlaySound("smw_1-up.wav")
                     self.MemCurrentAlbum(btnList[0].type)
-            
+                    self.PlayTrack(self.currentTrackId, self.currentTrackPosition)
+
             #two buttons long pushed
             if btnNumber==2:
                 if len(filter(lambda x: (x.type == ButtonType.VUp or x.type == ButtonType.VDown ), btnList))==2:
@@ -291,6 +309,7 @@ class OdioPlayer(object):
                     print("currentTrackId: "+str(self.currentTrackId))
                     print("currentTrackPosition: "+str(self.currentTrackPosition))
                     if self.player.is_playing():
+                        #self.PlaySound("smb_pause.wav")
                         print("-> player pause")
                         self.player.pause()
                     else:
@@ -314,6 +333,16 @@ class OdioPlayer(object):
                     or btnList[0].type == ButtonType.M3 \
                     or btnList[0].type == ButtonType.M4 :
                     self.PlayMemAlbum(btnList[0].type)
+                    self.PlaySound("smb_fireball.wav")
+                elif btnList[0].type == ButtonType.Home:
+                    print("-> Home Home")
+                    if self.soundCardEnabled:
+                        self.soundCard.disable()
+                        self.soundCardEnabled=False
+                    else:
+                        self.soundCard.enable()
+                        self.soundCardEnabled=True
+
 
     def MemCurrentAlbum (self, btnType):
         if self.debug:
@@ -356,14 +385,14 @@ class OdioPlayer(object):
         self.SaveDataToFile()
 
     def SaveDataToFile(self):
-        os.system("sudo cp " + self.applicationPath + "/savedData.xml " + self.applicationPath + "/saveData.xml.orig")
+        os.system("sudo cp " + self.applicationPath + "/config/savedData.xml " + self.applicationPath + "/config/saveData.xml.orig")
         with open(self.savedDataFile.name,"r+") as f:
             f.seek(0)
             f.truncate()
             f.write(self.savedData.prettify())
 
     def ReInitSavedDataFile(self):
-        with open(self.applicationPath+"/savedData.xml.orig") as origDataFile:
+        with open(self.applicationPath+"/config/savedData.xml.orig") as origDataFile:
             self.savedData = BeautifulSoup(origDataFile,'xml')
             self.SaveDataToFile()
 
@@ -386,24 +415,24 @@ class OdioPlayer(object):
 
             if self.debug:
                 print("-> Odioplayer: mode son intérieur activé")
-        
+
     def contains(list, filter):
         for x in list:
             if filter(x):
                 return True
         return False
-    
+
     def GetAlbumList(self, folder):
         tmpList = []
-
+        banList = ["$RECYCLE.BIN", "System Volume Information"]
         for subfolder in os.listdir(folder):
             subfolderPath = folder + '/' + subfolder
-            if os.path.isdir(subfolderPath):
+            if os.path.isdir(subfolderPath) and subfolder not in banList:
                 tmpList.append(subfolder)
 
         tmpList = sorted(tmpList)
 
-        if not self.quiet:
+        if self.debug or not self.quiet:
             print("*** Albums ***")
             for subfolder in tmpList:
                 print("-> "+subfolder)
@@ -411,22 +440,26 @@ class OdioPlayer(object):
 
         return tmpList
 
-    def PlayAlbum(self, albumId, trackId=0, position=0):
-        if self.player.is_playing():
-            self.player.stop()
+    def PlayAlbum(self, albumId, playSound=False, trackId=0, position=0):
+        #if self.player.is_playing():
+        #    self.player.stop()
 
         self.currentAlbumId = albumId
         self.currentTrackId = trackId
         self.currentTrackPosition = position
-        
+
         if self.debug or not self.quiet:
             print ("-> Odioplayer: play album - "+ self.currentAlbumList[self.currentAlbumId])
 
         self.currentAlbumPath = self.audioRoot+"/"+ self.currentAlbumList[self.currentAlbumId]
         self.currentTrackList = self.GetTrackList(self.currentAlbumPath)
-        self.moduloTrackList = len(self.currentTrackList)
 
-        self.PlayTrack(self.currentTrackId, self.currentTrackPosition)
+        if(len(self.currentTrackList)>0):
+            self.moduloTrackList = len(self.currentTrackList)
+
+            self.PlayTrack(self.currentTrackId, self.currentTrackPosition, playSound)
+        else:
+            self.PlayNextAlbum()
 
     def PlayNextAlbum(self):
         if self.debug:
@@ -445,7 +478,7 @@ class OdioPlayer(object):
         if getattr(self.savedData, memId).albumId.string:
             tmpAlbumId = int(getattr(self.savedData, memId).albumId.string)
             tmpTrackId = int(getattr(self.savedData, memId).trackId.string)
-            self.PlayAlbum(tmpAlbumId,tmpTrackId)
+            self.PlayAlbum(tmpAlbumId, playSound=True,trackId=tmpTrackId)
         else:
             if not self.quiet:
                 print("-> Appuyez jusqu'au signal pour mémoriser l'album écouté")
@@ -458,7 +491,7 @@ class OdioPlayer(object):
 
         tmpList = sorted(tmpList)
 
-        if not self.quiet:
+        if self.debug or not self.quiet:
             print("*** Tracks ***")
             for track in tmpList:
                 print("-> "+track)
@@ -479,22 +512,35 @@ class OdioPlayer(object):
         return title
 
     def AutoPlayNextTrack(self, event):
-        self.playNextTrack = True
+        if  self.isPlayingSound:
+            print ("-> Continue current track")
+            self.isPlayingSound = False
+            self.playCurrentTrack = True
+        else:
+            print ("-> Odioplayer: Auto play next track")
+            self.playNextTrack = True
 
-    def PlayTrack(self, trackId, position=0):
+    def PlaySound(self, filename):
+        print ("-> Odioplayer: sound " + filename)
+        self.isPlayingSound = True
+        self.player.set_media(self.vlcInstance.media_new("/home/pi/sounds/"+filename))
+        self.player.play()
 
-        if self.player.is_playing():
-            self.player.stop()
+    def PlayTrack(self, trackId, position=0, playSound=False):
+
+        #if self.player.is_playing():
+        #    self.player.stop()
 
         self.currentTrackId = trackId
         self.currentTrackPosition = position
 
-        trackTitle  = self.GetTrackTitle(self.currentAlbumPath +"/"+ self.currentTrackList[self.currentTrackId])
-        
+        trackPath = self.currentAlbumPath +"/"+ self.currentTrackList[self.currentTrackId]
+        trackTitle  = self.GetTrackTitle(trackPath)
+
         if (self.debug or not self.quiet) and trackTitle != None:
             print("-> Odioplayer: play track - " + trackTitle)
 
-        self.currentMedia = self.vlcInstance.media_new(self.currentAlbumPath +"/"+ self.currentTrackList[self.currentTrackId])
+        self.currentMedia = self.vlcInstance.media_new(trackPath)
         self.player.set_media(self.currentMedia)
         self.player.play()
 
@@ -503,18 +549,22 @@ class OdioPlayer(object):
                 print ("-> Odioplayer: start track at position - "+str(self.currentTrackPosition))
             self.player.set_position(self.currentTrackPosition)
 
+        if playSound:
+            print("-------->playSound")
+        #self.PlaySound("smb_fireworks.wav")
         self.SaveCurrentAlbumAndTrack()
 
     def PlayNextTrack(self):
+        print("PLAY NEXT TRACK current="+ str(self.currentTrackId)+" mod="+ str(self.moduloTrackList)+" next="+str((self.currentTrackId +1)%self.moduloTrackList))
         self.PlayTrack((self.currentTrackId +1)%self.moduloTrackList)
 
     def PlayPreviousTrack(self):
         self.PlayTrack((self.currentTrackId -1)%self.moduloTrackList)
 
     def VolumeUp(self):
-        if self.currentVolume + self.volumeIncr < self.volumeMax: 
+        if self.currentVolume + self.volumeIncr < self.volumeMax:
             self.currentVolume = self.currentVolume + self.volumeIncr
-        else: 
+        else:
             self.currentVolume = self.volumeMax
 
         self.player.audio_set_volume(self.currentVolume)
@@ -525,9 +575,9 @@ class OdioPlayer(object):
             print ("-> Odioplayer: volume - "+str(self.player.audio_get_volume()))
 
     def VolumeDown(self):
-        if self.currentVolume - self.volumeIncr > self.volumeMin: 
+        if self.currentVolume - self.volumeIncr > self.volumeMin:
             self.currentVolume = self.currentVolume - self.volumeIncr
-        else: 
+        else:
             self.currentVolume = self.volumeMin
 
         self.player.audio_set_volume(self.currentVolume)
@@ -564,7 +614,7 @@ def clearScrean():
 
 def main(argv):
 
-   opts =None 
+   opts =None
    args=None
 
    try:
@@ -593,20 +643,24 @@ if __name__ == "__main__":
             print("-> OdioPlayer: shutting down")
 
             #Todo clean stop player!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        oPlayer.shuttingDown=True
+
         if oPlayer.player.is_playing():
             oPlayer.player.pause()
-            #oPlayer.player.stop()
+            oPlayer.player.stop()
 
-        os.system("sudo sh /home/pi/stopSoundCard.sh")
+        if oPlayer.soundCardEnabled:
+            oPlayer.soundCard.disable()
+
         GPIO.cleanup()
 
     main(sys.argv[1:])
 
     debug=True
-    quiet=True
+    quiet=False
 
-    shutdownSoundFile='/home/pi/sound/smw_coin_reverse.wav'
-    lipopiLogFile = "/home/pi/lipopi.log"
+    shutdownSoundFile='/home/pi/sounds/smw_coin_reverse.wav'
+    lipopiLogFile = "/home/pi/log/lipopi.log"
     sdGpio = 13
     lbGpio = 6
 
@@ -616,11 +670,11 @@ if __name__ == "__main__":
         clearScrean()
 
         oPlayer = OdioPlayer(quiet, debug)
-        
+
         sdm = ShutDownMgt(sdGpio, lbGpio, shutdown, shutdownSoundFile, lipopiLogFile, quiet, debug)
 
         oPlayer.Start()
-    
+
     except ValueError:
         print ("ValueError:")
         print (ValueError)

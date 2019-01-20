@@ -8,7 +8,7 @@ import RPi.GPIO as GPIO
 class ShutDownMgt(object):
 
     shutdown_pin = None
-    shutdown_wait = 0
+    shutdown_wait = 5
     low_battery_pin = None
     logfile = None
     logfile_path = None
@@ -49,17 +49,20 @@ class ShutDownMgt(object):
     def lipopi_user_shutdown(self, channel):
         if self.debug:
             print("-> lipopi: user shutdown")
+            
+        #self.shutdown()
 
-        if self.soundfile_path != None:
-            system("sudo aplay "+ self.soundfile_path)
+        #if self.soundfile_path != None:
+         #   system("sudo aplay "+ self.soundfile_path)
 
         if not self.quiet:
             system("sudo wall 'System shutting down in %d seconds'" % self.shutdown_wait)
-            sleep(self.shutdown_wait)
+        
+        sleep(self.shutdown_wait)
 
         self.log(strftime("User Request - Shutting down at %a, %d %b %Y %H:%M:%S +0000\n", gmtime()))
 
-        self.shutdown()
+        
 
     def lipopi_low_battery_shutdown(self, channel):
         if self.debug:
@@ -70,7 +73,8 @@ class ShutDownMgt(object):
 
         if not self.quiet:
             system("sudo wall 'System shutting down in %d seconds'" % self.shutdown_wait)
-            sleep(self.shutdown_wait)
+            
+        sleep(self.shutdown_wait)
 
         self.log(strftime("Low Battery - Shutting down at %a, %d %b %Y %H:%M:%S +0000\n", gmtime()))
 
