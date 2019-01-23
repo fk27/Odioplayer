@@ -11,3 +11,4 @@
  * Start, shutdown and reset buttons
  * Lipoly Battery 3,7v 2000 mah
  
+For More information about the [Raspbian Configuration](/Raspbian-Conf/HowTo.md).
