@@ -8,6 +8,6 @@
  * Adafruit PAM8302A
  * Visaton BF 45 speaker
  * 12 push buttons
- * start, shutdown and rest buttons
+ * start, shutdown and reset buttons
  * Lipoly Battery 3,7v 2000 mah
  
