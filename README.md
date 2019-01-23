@@ -6,4 +6,3 @@ Python musical player based on:
  * Visaton BF 45 speaker
  * Lipoly Battery 3,7v 2000 mah
  
- test

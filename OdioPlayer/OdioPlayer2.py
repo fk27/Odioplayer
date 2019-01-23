@@ -1,6 +1,5 @@
 import sys
 
-
 import getopt
 import RPi.GPIO as GPIO
 
