@@ -1,6 +1,6 @@
 # OdioPlayer
 
-**Python musical player**
+**Raspberry Pi Python musical player**
  * Based on vlc player
  * Raspberrypi Zero
  * Pimoroni pHat-Dac
