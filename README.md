@@ -1,7 +1,7 @@
 # OdioPlayer
 
 **Python musical player**
- * Based vlc player
+ * Based on vlc player
  * Raspberrypi Zero
  * Pimoroni pHat-Dac
  * Adafruit PowerBoost 500 Charger
