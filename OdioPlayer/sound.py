@@ -1,11 +1,12 @@
 import RPi.GPIO as GPIO
 
-class PAM8302A(object):
 
+class PAM8302A(object):
     debug = False
     sdGpio = None
 
-    def __init__(self, sdGpio, debug=False):
+    def __init__(self, sdGpio, d=False):
+        self.debug = d
 
         if self.debug:
             print("-> PAM8302A: init")
@@ -28,9 +29,8 @@ class PAM8302A(object):
 
         GPIO.output(self.sdGpio, False)
 
-    def cleanup():
+    def cleanup(self):
         if self.debug:
             print("-> PAM8302A: cleanup")
 
         GPIO.cleanup()
-

@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class ButtonType(Enum):
     Home = 1
     Left = 2
@@ -19,13 +20,10 @@ class ButtonType(Enum):
 
     @classmethod
     def toString(cls, val):
-        for k,v in vars(cls).items():
-            if v==val:
+        for k, v in vars(cls).items():
+            if v == val:
                 return k
 
-    #@classmethod
-    #def fromString(cls, str):
+    # @classmethod
+    # def fromString(cls, str):
     #  return getattr(cls, str.upper(), None)
-
-
-
