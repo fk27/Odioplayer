@@ -1,5 +1,3 @@
-# OdioPlayer
-
 Python musical player based on:
  * Raspberrypi Zero
  * Pimoroni pHat-Dac
@@ -7,3 +5,5 @@ Python musical player based on:
  * Adafruit PAM8302A
  * Visaton BF 45 speaker
  * Lipoly Battery 3,7v 2000 mah
+ 
+ test
