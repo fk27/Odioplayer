@@ -1,10 +1,10 @@
-import sys
-
 import getopt
-import RPi.GPIO as GPIO
+import os
+import sys
+from os import system
 
+from lipopi import ShutDownMgt3
 from player import OdioPlayer
-from lipopi import ShutDownMgt
 
 
 def clearScrean():
@@ -38,17 +38,13 @@ if __name__ == "__main__":
         if debug:
             print("-> OdioPlayer: shutting down")
 
-            # Todo clean stop player!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         oPlayer.shuttingDown = True
 
-        if oPlayer.player.is_playing():
-            oPlayer.player.pause()
-            oPlayer.player.stop()
+        oPlayer.CleanUp()
 
-        if oPlayer.soundCardEnabled:
-            oPlayer.soundCard.disable()
+        system("sudo aplay " + shutdownSoundFile)
 
-        GPIO.cleanup()
+        os.system("sudo shutdown now")
 
 
     main(sys.argv[1:])
@@ -68,7 +64,7 @@ if __name__ == "__main__":
 
         oPlayer = OdioPlayer(quiet, debug)
 
-        sdm = ShutDownMgt(sdGpio, lbGpio, shutdown, shutdownSoundFile, lipopiLogFile, quiet, debug)
+        sdm = ShutDownMgt3(sdGpio, lbGpio, lipopiLogFile, quiet, debug, sdFunction=shutdown)
 
         oPlayer.Start()
 

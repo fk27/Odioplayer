@@ -1,40 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
-  <isDebug>True</isDebug>
-  <isAlbumTitleTTS>False</isAlbumTitleTTS>
-  <isSongTitleTTS>False</isSongTitleTTS>
-	<audioRoot>/home/pi/music</audioRoot>
-	<volume>
-		  <safeVolMin>0</safeVolMin>
-		  <safeVolMax>50</safeVolMax>
-		  <defaultSafeVol>30</defaultSafeVol>
-		  <outdoorVolMin>0</outdoorVolMin>
-		  <outdoorVolMax>100</outdoorVolMax>
-		  <defaultOutdoorVol>80</defaultOutdoorVol>
-      <volumeIncr>2</volumeIncr>
-	</volume>
-	<gpio>
-		  <setWarnings>False</setWarnings>
-		  <gPioList>
-        <id>23</id>
-        <id>24</id>
-        <id>25</id>
-        <id>26</id>
-		  </gPioList>
-	</gpio>
-  <buttons>
-    <longPushedDelay>2</longPushedDelay>
-    <button gpioOut="24" gpioIn="23" type="Home"/>
-    <button gpioOut="25" gpioIn="23" type="Left"/>
-    <button gpioOut="26" gpioIn="23" type="Right"/>
-    <button gpioOut="23" gpioIn="24" type="Up"/>
-    <button gpioOut="25" gpioIn="24" type="Down"/>
-    <button gpioOut="26" gpioIn="24" type="Play"/>
-    <button gpioOut="23" gpioIn="25" type="VUp"/>
-    <button gpioOut="24" gpioIn="25" type="VDown"/>
-    <button gpioOut="26" gpioIn="25" type="M1"/>
-    <button gpioOut="23" gpioIn="26" type="M2"/>
-    <button gpioOut="24" gpioIn="26" type="M3"/>
-    <button gpioOut="25" gpioIn="26" type="M4"/>
-  </buttons>
+    <isDebug>True</isDebug>
+    <isAutoPlayNextAlbum>True</isAutoPlayNextAlbum>
+    <isAlbumTitleTTS>False</isAlbumTitleTTS>
+    <isSongTitleTTS>False</isSongTitleTTS>
+    <audioRoot>/home/pi/music</audioRoot>
+    <volume>
+        <safeVolMin>0</safeVolMin>
+        <safeVolMax>50</safeVolMax>
+        <defaultSafeVol>30</defaultSafeVol>
+        <outdoorVolMin>0</outdoorVolMin>
+        <outdoorVolMax>100</outdoorVolMax>
+        <defaultOutdoorVol>80</defaultOutdoorVol>
+        <volumeIncr>5</volumeIncr>
+    </volume>
+    <speed>
+        <min>1</min>
+        <max>5</max>
+        <default>1</default>
+        <incr>1</incr>
+    </speed>
+    <gpio>
+        <setWarnings>False</setWarnings>
+        <gPioList>
+            <id>23</id>
+            <id>24</id>
+            <id>25</id>
+            <id>26</id>
+        </gPioList>
+    </gpio>
+    <buttons>
+        <longPushedDelay>1</longPushedDelay>
+        <button gpioOut="24" gpioIn="23" type="Home"/>
+        <button gpioOut="25" gpioIn="23" type="Left"/>
+        <button gpioOut="26" gpioIn="23" type="Right"/>
+        <button gpioOut="23" gpioIn="24" type="Up"/>
+        <button gpioOut="25" gpioIn="24" type="Down"/>
+        <button gpioOut="26" gpioIn="24" type="Play"/>
+        <button gpioOut="23" gpioIn="25" type="VUp"/>
+        <button gpioOut="24" gpioIn="25" type="VDown"/>
+        <button gpioOut="26" gpioIn="25" type="M1"/>
+        <button gpioOut="23" gpioIn="26" type="M2"/>
+        <button gpioOut="24" gpioIn="26" type="M3"/>
+        <button gpioOut="25" gpioIn="26" type="M4"/>
+    </buttons>
 </config>

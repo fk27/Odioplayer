@@ -1,10 +1,10 @@
 import os
-
 import time
-import vlc
-import eyed3
-from bs4 import BeautifulSoup
+
 import RPi.GPIO as GPIO
+import eyed3
+import vlc
+from bs4 import BeautifulSoup
 
 from button import Button
 from buttontype import ButtonType
@@ -39,9 +39,14 @@ class OdioPlayer(object):
     volumeMin = None
     volumeMax = None
     currentVolume = 50
-
     volumeIncr = None
     isSafeVolume = True
+
+    speedMin = None
+    speedMax = None
+    initSpeed = 1
+    currentSpeed = 1
+    speedIncr = None
 
     currentAlbumList = []
     moduloAlbumList = 0
@@ -59,6 +64,7 @@ class OdioPlayer(object):
     player = None
     vlc_events = None
 
+    isAutoPlayNextAlbum = False
     playNextTrack = False
     playerWasPlaying = False
 
@@ -77,6 +83,7 @@ class OdioPlayer(object):
     applicationPath = ''
     soundCard = None
     soundCardEnabled = True
+
     shuttingDown = False
 
     def __init__(self, q=False, d=False):
@@ -105,6 +112,7 @@ class OdioPlayer(object):
                 self.isDebug = True if self.config.isDebug and self.config.isDebug.string == "True" else False
                 self.isAlbumTitleTTS = True if self.config.isAlbumTitleTTS and self.config.isAlbumTitleTTS.string == "True" else False
                 self.isSongTitleTTS = True if self.config.isSongTitleTTS and self.config.isSongTitleTTS.string == "True" else False
+                self.isAutoPlayNextAlbum = True if self.config.isAutoPlayNextAlbum and self.config.isAutoPlayNextAlbum.string == "True" else False
                 self.audioRoot = self.config.audioRoot.string
 
                 self.safeVolMin = int(self.config.volume.safeVolMin.string)
@@ -116,7 +124,6 @@ class OdioPlayer(object):
                 self.defaultOutdoorVol = int(self.config.volume.defaultOutdoorVol.string)
 
                 self.volumeIncr = int(self.config.volume.volumeIncr.string)
-
                 self.volumeMin = self.safeVolMin
                 self.volumeMax = self.safeVolMax
 
@@ -124,6 +131,12 @@ class OdioPlayer(object):
                     self.currentVolume = int(self.savedData.currentVolume.string)
                 else:
                     self.currentVolume = self.defaultSafeVol
+
+                self.speedMin = int(self.config.speed.min.string)
+                self.speedMax = int(self.config.speed.max.string)
+                self.defaultSpeed = int(self.config.speed.default.string)
+                self.currentSpeed = self.defaultSpeed
+                self.speedIncr = float(self.config.speed.incr.string)
 
                 # Init GPIO and Buttons
                 GPIO.setwarnings(True if self.config.gpio.setWarnings.string == "True" else False)
@@ -144,10 +157,10 @@ class OdioPlayer(object):
                 # Init VLC
                 self.vlcInstance = vlc.Instance()
                 self.player = self.vlcInstance.media_player_new()
+
                 self.player.audio_set_volume(self.currentVolume)
                 self.vlc_events = self.player.event_manager()
-                self.vlc_events.event_attach(vlc.EventType.MediaPlayerBackward.MediaPlayerEndReached,
-                                             self.AutoPlayNextTrack)
+                self.vlc_events.event_attach(vlc.EventType.MediaPlayerBackward.MediaPlayerEndReached, self.AutoPlayNextTrack)
                 # self.vlc_events.event_detach(vlc.EventType.MediaPlayerBackward.MediaPlayerEndReached)
 
                 # Init Album List
@@ -190,84 +203,100 @@ class OdioPlayer(object):
     def CleanUp(self):
         if self.debug:
             print("-> OdioPlayer: CleanUp")
+
+        if self.soundCardEnabled:
+            self.soundCard.disable()
+
         self.player.stop()
-        os.system("sudo sh /home/pi/stopSoundCard.sh")
+
         GPIO.cleanup()
+
+    def Stop(self):
+        print("-> Odioplayer stopping")
 
     def Start(self):
         if self.player:
             try:
-                while True and not self.shuttingDown:
-                    if self.player.is_playing() and not self.isPlayingSound:
-                        self.SaveCurrentTrackPosition()
-                    i = 0
-                    while i < self.lenGPIOList:
-                        # tmpBtList = []
-                        tmpBtList = self.CheckButtonGPIO(self.gPioList[(0 + i) % self.lenGPIOList],
-                                                         self.gPioList[(1 + i) % self.lenGPIOList],
-                                                         self.gPioList[(2 + i) % self.lenGPIOList],
-                                                         self.gPioList[(3 + i) % self.lenGPIOList])
-                        if tmpBtList:
-                            self.buttonPushedList.extend(tmpBtList)
-                        i += 1
+                while True:
+                    if not self.shuttingDown:
+                        if self.player.is_playing() and not self.isPlayingSound:
+                            self.SaveCurrentTrackPosition()
+                        i = 0
+                        while i < self.lenGPIOList:
+                            # tmpBtList = []
+                            tmpBtList = self.CheckButtonGPIO(self.gPioList[(0 + i) % self.lenGPIOList],
+                                                             self.gPioList[(1 + i) % self.lenGPIOList],
+                                                             self.gPioList[(2 + i) % self.lenGPIOList],
+                                                             self.gPioList[(3 + i) % self.lenGPIOList])
+                            if tmpBtList:
+                                self.buttonPushedList.extend(tmpBtList)
+                            i += 1
 
-                    if self.playNextTrack is True:
-                        self.playNextTrack = False
-                        self.PlayNextTrack()
-                    elif self.playCurrentTrack is True:
-                        self.playCurrentTrack = False
-                        self.PlayTrack(self.currentTrackId, self.currentTrackPosition)
+                        if self.playNextTrack is True:
+                            self.playNextTrack = False
 
-                    # print("check")
-                    # Si bouton précédent = bouton -> calcul pushed time
+                            # if it was the last song play the next album
+                            if self.isAutoPlayNextAlbum and (self.currentTrackId + 1) % self.moduloTrackList == 0:
+                                self.PlayNextAlbum()
+                            else:
+                                self.PlayNextTrack()
 
-                    # ToCheck
-                    # if cmp(self.previousButtonPushedList, self.buttonPushedList) == 0:
-                    if (self.previousButtonPushedList > self.buttonPushedList) - (
-                            self.previousButtonPushedList < self.buttonPushedList) == 0:
-                        self.currentPushedTime = time.time() - self.startPushedTime
-                        # Si le delay long pushed est dépassé --> execute action long button pushed
-                        if self.currentPushedTime >= self.longPushedDelay:
+                        elif self.playCurrentTrack is True:
+                            self.playCurrentTrack = False
+                            self.PlayTrack(self.currentTrackId, self.currentTrackPosition)
+
+                        # print("check")
+                        # Si bouton précédent = bouton -> calcul pushed time
+
+                        # ToCheck
+                        # if cmp(self.previousButtonPushedList, self.buttonPushedList) == 0:
+                        if (self.previousButtonPushedList > self.buttonPushedList) - (self.previousButtonPushedList < self.buttonPushedList) == 0:
+                            self.currentPushedTime = time.time() - self.startPushedTime
+                            # Si le delay long pushed est dépassé --> execute action long button pushed
+                            if self.currentPushedTime >= self.longPushedDelay:
+                                if self.buttonPushedList:
+                                    tmpBtPushedText = Button.GetButtonListName(self.buttonPushedList)
+                                    if self.debug:
+                                        print("-> OdioPlayer: " + tmpBtPushedText + " long push")
+                                    self.currentPushedTime = 0
+                                    self.startPushedTime = time.time()
+                                    self.wasLongPush = True
+                                    self.ExecuteLongButtonAction(self.buttonPushedList)
+                            else:
+                                btnNumber = len(self.buttonPushedList)
+                                # one button long pushed
+                                if btnNumber == 1:
+                                    if self.buttonPushedList[0].type != ButtonType.Right \
+                                            and self.buttonPushedList[0].type != ButtonType.Left \
+                                            and self.buttonPushedList[0].type != ButtonType.M1 \
+                                            and self.buttonPushedList[0].type != ButtonType.M2 \
+                                            and self.buttonPushedList[0].type != ButtonType.M3 \
+                                            and self.buttonPushedList[0].type != ButtonType.M4:
+                                        if self.debug:
+                                            print("-> OdioPlayer: long push short action")
+                                        self.ExecuteShortButtonAction(self.buttonPushedList)
+
+                        # Si bouton précédent != bouton -> release du bouton OU nouveau bouton poussé
+                        else:
+                            # Si nouveau bouton -> init pushed time
                             if self.buttonPushedList:
-                                tmpBtPushedText = Button.GetButtonListName(self.buttonPushedList)
-                                if self.debug:
-                                    print("-> OdioPlayer: " + tmpBtPushedText + " long push")
                                 self.currentPushedTime = 0
                                 self.startPushedTime = time.time()
-                                self.wasLongPush = True
-                                self.ExecuteLongButtonAction(self.buttonPushedList)
-                        else:
-                            btnNumber = len(self.buttonPushedList)
-                            # one button long pushed
-                            if btnNumber == 1:
-                                if self.buttonPushedList[0].type != ButtonType.M1 \
-                                        and self.buttonPushedList[0].type != ButtonType.M2 \
-                                        and self.buttonPushedList[0].type != ButtonType.M3 \
-                                        and self.buttonPushedList[0].type != ButtonType.M4:
+                            # Si pas de bouton (release du bouton) => previous button short pushed
+                            elif self.currentPushedTime < self.longPushedDelay:
+                                # Si on ne succède pas au release d'un longpush -> vrai release short push
+                                if not self.wasLongPush:
+                                    tmpBtPushedText = Button.GetButtonListName(self.previousButtonPushedList)
                                     if self.debug:
-                                        print("-> OdioPlayer: long push short action")
-                                    self.ExecuteShortButtonAction(self.buttonPushedList)
+                                        print("->OdioPlayer: " + tmpBtPushedText + " short push")
+                                    self.ExecuteShortButtonAction(self.previousButtonPushedList)
+                                else:
+                                    self.wasLongPush = False
 
-                    # Si bouton précédent != bouton -> release du bouton OU nouveau bouton poussé
-                    else:
-                        # Si nouveau bouton -> init pushed time
-                        if self.buttonPushedList:
-                            self.currentPushedTime = 0
-                            self.startPushedTime = time.time()
-                        # Si pas de bouton (release du bouton) => previous button short pushed
-                        elif self.currentPushedTime < self.longPushedDelay:
-                            # Si on ne succède pas au release d'un longpush -> vrai release short push
-                            if not self.wasLongPush:
-                                tmpBtPushedText = Button.GetButtonListName(self.previousButtonPushedList)
-                                if self.debug:
-                                    print(tmpBtPushedText + " short push")
-                                self.ExecuteShortButtonAction(self.previousButtonPushedList)
-                            else:
-                                self.wasLongPush = False
+                        self.previousButtonPushedList = list(self.buttonPushedList)
+                        self.buttonPushedList = []
+                        time.sleep(0.1)
 
-                    self.previousButtonPushedList = list(self.buttonPushedList)
-                    self.buttonPushedList = []
-                    time.sleep(0.1)
             except ValueError:
                 print("ValueError:")
                 print(ValueError)
@@ -281,7 +310,11 @@ class OdioPlayer(object):
             btnNumber = len(btnList)
             # one button long pushed
             if btnNumber == 1:
-                if btnList[0].type == ButtonType.M1 \
+                if btnList[0].type == ButtonType.Right:
+                    self.SpeedUp()
+                elif btnList[0].type == ButtonType.Left:
+                    self.SpeedDown()
+                elif btnList[0].type == ButtonType.M1 \
                         or btnList[0].type == ButtonType.M2 \
                         or btnList[0].type == ButtonType.M3 \
                         or btnList[0].type == ButtonType.M4:
@@ -291,7 +324,7 @@ class OdioPlayer(object):
 
             # two buttons long pushed
             if btnNumber == 2:
-                if len(filter(lambda x: (x.type == ButtonType.VUp or x.type == ButtonType.VDown), btnList)) == 2:
+                if len(list(filter(lambda x: (x.type == ButtonType.VUp or x.type == ButtonType.VDown), btnList))) == 2:
                     if self.isSafeVolume:
                         self.SetOutdoorVolume(True)
                     else:
@@ -478,8 +511,7 @@ class OdioPlayer(object):
     def GetTrackList(self, folder):
         tmpList = []
         for filename in os.listdir(folder):
-            if filename.endswith(".mp3") or filename.endswith(".flac") or filename.endswith(
-                    ".wav") or filename.endswith(".weba"):
+            if filename.endswith(".mp3") or filename.endswith(".flac") or filename.endswith(".wav") or filename.endswith(".weba"):
                 tmpList.append(filename)
 
         tmpList = sorted(tmpList)
@@ -522,6 +554,8 @@ class OdioPlayer(object):
 
     def PlayTrack(self, trackId, position=0, playSound=False):
 
+        self.SetSpeed(self.defaultSpeed)
+
         # if self.player.is_playing():
         #    self.player.stop()
 
@@ -549,8 +583,7 @@ class OdioPlayer(object):
         self.SaveCurrentAlbumAndTrack()
 
     def PlayNextTrack(self):
-        print("PLAY NEXT TRACK current=" + str(self.currentTrackId) + " mod=" + str(
-            self.moduloTrackList) + " next=" + str((self.currentTrackId + 1) % self.moduloTrackList))
+        # print("PLAY NEXT TRACK current=" + str(self.currentTrackId) + " mod=" + str(self.moduloTrackList) + " next=" + str((self.currentTrackId + 1) % self.moduloTrackList))
         self.PlayTrack((self.currentTrackId + 1) % self.moduloTrackList)
 
     def PlayPreviousTrack(self):
@@ -558,48 +591,63 @@ class OdioPlayer(object):
 
     def VolumeUp(self):
         if self.currentVolume + self.volumeIncr < self.volumeMax:
-            self.currentVolume = self.currentVolume + self.volumeIncr
+            self.SetVolume(self.currentVolume + self.volumeIncr)
         else:
-            self.currentVolume = self.volumeMax
-
-        self.player.audio_set_volume(self.currentVolume)
-
-        self.SaveCurrentVolume()
-
-        if self.debug or not self.quiet:
-            print("-> Odioplayer: volume - " + str(self.player.audio_get_volume()))
+            self.SetVolume(self.volumeMax)
 
     def VolumeDown(self):
         if self.currentVolume - self.volumeIncr > self.volumeMin:
-            self.currentVolume = self.currentVolume - self.volumeIncr
+            self.SetVolume(self.currentVolume - self.volumeIncr)
         else:
-            self.currentVolume = self.volumeMin
+            self.SetVolume(self.volumeMin)
 
+    def SetVolume(self, vol):
+        self.currentVolume = vol
         self.player.audio_set_volume(self.currentVolume)
 
         self.SaveCurrentVolume()
 
         if self.debug or not self.quiet:
             print("-> Odioplayer: volume - " + str(self.player.audio_get_volume()))
+
+    def SpeedUp(self):
+        if self.currentSpeed + self.speedIncr < self.speedMax:
+            self.SetSpeed(self.currentSpeed + self.speedIncr)
+        else:
+            self.SetSpeed(self.speedMax)
+
+    def SpeedDown(self):
+        if self.currentSpeed - self.speedIncr > self.speedMin:
+            self.SetSpeed(self.currentSpeed - self.speedIncr)
+        else:
+            self.SetSpeed(self.speedMin)
+
+    def SetSpeed(self, speed):
+        self.currentSpeed = speed
+        self.player.set_rate(self.currentSpeed)
+
+        if self.debug or not self.quiet:
+            print("-> Odioplayer: SetSpeed - speed= " + str(self.player.get_rate()))
 
     def CheckButtonGPIO(self, out, in1, in2, in3):
         tmpBtList = []
 
-        GPIO.setup(out, GPIO.OUT)
+        if not self.shuttingDown:
+            GPIO.setup(out, GPIO.OUT)
 
-        GPIO.setup(in1, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-        GPIO.setup(in2, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-        GPIO.setup(in3, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+            GPIO.setup(in1, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+            GPIO.setup(in2, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+            GPIO.setup(in3, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
-        GPIO.output(out, GPIO.HIGH)
+            GPIO.output(out, GPIO.HIGH)
 
-        if GPIO.input(in1) == GPIO.HIGH:
-            tmpBtList.extend(Button.FindButton(self.btnList, out, in1))
+            if GPIO.input(in1) == GPIO.HIGH:
+                tmpBtList.extend(Button.FindButton(self.btnList, out, in1))
 
-        if GPIO.input(in2) == GPIO.HIGH:
-            tmpBtList.extend(Button.FindButton(self.btnList, out, in2))
+            if GPIO.input(in2) == GPIO.HIGH:
+                tmpBtList.extend(Button.FindButton(self.btnList, out, in2))
 
-        if GPIO.input(in3) == GPIO.HIGH:
-            tmpBtList.extend(Button.FindButton(self.btnList, out, in3))
+            if GPIO.input(in3) == GPIO.HIGH:
+                tmpBtList.extend(Button.FindButton(self.btnList, out, in3))
 
         return tmpBtList
